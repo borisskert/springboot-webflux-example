@@ -1,6 +1,5 @@
 package de.borisskert.springboot.features.world;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opentest4j.AssertionFailedError;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
@@ -48,7 +47,7 @@ public class CucumberHttpClient {
      **************************************************************************************************************** */
 
     @Autowired
-    public CucumberHttpClient(WebTestClient webClient, ObjectMapper mapper) {
+    public CucumberHttpClient(WebTestClient webClient) {
         this.webClient = webClient;
     }
 

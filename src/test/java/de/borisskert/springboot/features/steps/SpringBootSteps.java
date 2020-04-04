@@ -6,7 +6,6 @@ import de.borisskert.springboot.webflux.Application;
 import io.cucumber.java.en.Given;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -14,9 +13,10 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 
-
+/**
+ * Glue code to run Cucumber tests within the Spring Boot context
+ */
 @WebFluxWithMongoTest
-@ActiveProfiles("IT")
 @ContextConfiguration(
         classes = {
                 Application.class,
