@@ -35,7 +35,7 @@ public class TicketSteps {
 
     @Then("^I should get no tickets$")
     public void iShouldGetNoTickets() {
-        httpClient.verifyLatestStatus(HttpStatus.OK);
+        httpClient.verifyLatestStatusIsEqualTo(HttpStatus.OK);
         httpClient.verifyLatestBodyIsEmptyArray();
     }
 
@@ -50,7 +50,7 @@ public class TicketSteps {
 
     @Then("^I should get following tickets$")
     public void iShouldGetFollowingTickets(List<Ticket> dataTable) {
-        httpClient.verifyLatestStatus(HttpStatus.OK);
-        httpClient.verifyLatestBodyContainsInAnyOrder(dataTable, Ticket.LIST_TYPE);
+        httpClient.verifyLatestStatusIsEqualTo(HttpStatus.OK);
+        httpClient.verifyLatestBodyContainsInAnyOrder(dataTable, Ticket.TYPE_REFERENCE);
     }
 }

@@ -1,10 +1,10 @@
 package de.borisskert.springboot.features.steps;
 
+import de.borisskert.springboot.WebFluxWithMongoTest;
 import de.borisskert.springboot.features.FeaturesConfiguration;
 import de.borisskert.springboot.webflux.Application;
 import io.cucumber.java.en.Given;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
@@ -15,7 +15,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@WebFluxWithMongoTest
 @ActiveProfiles("IT")
 @ContextConfiguration(
         classes = {

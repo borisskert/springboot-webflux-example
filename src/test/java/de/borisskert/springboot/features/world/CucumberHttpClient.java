@@ -1,30 +1,28 @@
 package de.borisskert.springboot.features.world;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.opentest4j.AssertionFailedError;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Scope;
-import org.springframework.http.HttpEntity;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.test.web.reactive.server.ExchangeResult;
+import org.springframework.test.web.reactive.server.FluxExchangeResult;
+import org.springframework.test.web.reactive.server.StatusAssertions;
+import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.util.MultiValueMap;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static io.cucumber.spring.CucumberTestContext.SCOPE_CUCUMBER_GLUE;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * @see <a href="https://github.com/borisskert/springboot-cucumber-wiremock-example"></a>
@@ -33,35 +31,25 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Scope(SCOPE_CUCUMBER_GLUE)
 public class CucumberHttpClient {
     /* *****************************************************************************************************************
-     * Constants
-     **************************************************************************************************************** */
-
-    private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {
-    };
-
-    /* *****************************************************************************************************************
      * Readonly fields
      **************************************************************************************************************** */
 
-    private final TestRestTemplate restTemplate;
-    private final ObjectMapper mapper;
-
+    private final WebTestClient webClient;
     private final MultiValueMap<String, String> headers = new HttpHeaders();
 
     /* *****************************************************************************************************************
      * Mutable fields
      **************************************************************************************************************** */
 
-    private ResponseEntity<String> lastResponse;
+    private WebTestClient.ResponseSpec lastResponse;
 
     /* *****************************************************************************************************************
      * Constructor
      **************************************************************************************************************** */
 
     @Autowired
-    public CucumberHttpClient(TestRestTemplate restTemplate, ObjectMapper mapper) {
-        this.restTemplate = restTemplate;
-        this.mapper = mapper;
+    public CucumberHttpClient(WebTestClient webClient, ObjectMapper mapper) {
+        this.webClient = webClient;
     }
 
     /* *****************************************************************************************************************
@@ -73,186 +61,155 @@ public class CucumberHttpClient {
     }
 
     public void get(String url, Object... urlVariables) {
-        requestEmptyBody(HttpMethod.GET, url, urlVariables);
+        lastResponse = webClient.get()
+                .uri(url, urlVariables)
+                .headers(setupHeaders())
+                .exchange();
     }
 
     public void post(String url, Object body, Object... urlVariables) {
-        request(HttpMethod.POST, url, body, urlVariables);
+        lastResponse = webClient.post()
+                .uri(url, urlVariables)
+                .bodyValue(body)
+                .headers(setupHeaders())
+                .exchange();
     }
 
     public void postEmptyBody(String url, Object... urlVariables) {
-        requestEmptyBody(HttpMethod.POST, url, urlVariables);
+        lastResponse = webClient.post()
+                .uri(url, urlVariables)
+                .headers(setupHeaders())
+                .exchange();
     }
 
     public void put(String url, Object body, Object... urlVariables) {
-        request(HttpMethod.PUT, url, body, urlVariables);
+        lastResponse = webClient.put()
+                .uri(url, urlVariables)
+                .bodyValue(body)
+                .headers(setupHeaders())
+                .exchange();
     }
 
     /* *****************************************************************************************************************
      * Methods to verify response
      **************************************************************************************************************** */
 
-    public void verifyLatestStatus(HttpStatus expectedStatus) {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
+    public void verifyLatestStatusIsEqualTo(HttpStatus expectedStatus) {
+        getLastResponse()
+                .map(WebTestClient.ResponseSpec::expectStatus)
+                .ifPresentOrElse(
+                        status -> status.isEqualTo(expectedStatus),
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
+    }
 
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            assertThat(response.getStatusCode(), is(equalTo(expectedStatus)));
-        } else {
-            fail("Got no response");
-        }
+    public void verifyLatestStatusIs2xxSuccessful() {
+        getLastResponse()
+                .map(WebTestClient.ResponseSpec::expectStatus)
+                .ifPresentOrElse(
+                        StatusAssertions::is2xxSuccessful,
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
     }
 
     public void verifyLatestBodyIsEqualTo(String expectedBody) {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
-
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            String body = response.getBody();
-
-            assertThat(body, is(equalTo(expectedBody)));
-        } else {
-            fail("Got no response");
-        }
+        getLastResponse()
+                .map(response -> response.returnResult(String.class))
+                .map(FluxExchangeResult::getResponseBody)
+                .map(Flux::blockLast)
+                .ifPresentOrElse(
+                        body -> assertThat(body, is(equalTo(expectedBody))),
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
     }
 
     public <T> void verifyLatestBodyIsEqualTo(T expectedBody, Class<T> type) {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
-
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            String body = response.getBody();
-
-            T convertedBody = tryToConvertFromJson(body, type);
-
-            assertThat(convertedBody, is(equalTo(expectedBody)));
-        } else {
-            fail("Got no response");
-        }
+        getLastResponse()
+                .map(response -> response.returnResult(type))
+                .map(FluxExchangeResult::getResponseBody)
+                .map(Flux::blockLast)
+                .ifPresentOrElse(
+                        body -> assertThat(body, is(equalTo(expectedBody))),
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
     }
 
-    public <T> void verifyLatestBodyIsEqualTo(List<T> expectedBody, TypeReference<List<T>> type) {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
-
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            String body = response.getBody();
-
-            List<T> convertedBody = tryToConvertFromJson(body, type);
-
-            assertThat(convertedBody, is(equalTo(expectedBody)));
-        } else {
-            fail("Got no response");
-        }
+    public <T> void verifyLatestBodyIsEqualTo(List<T> expectedBody, ParameterizedTypeReference<T> type) {
+        getLastResponse()
+                .map(response -> response.expectBodyList(type))
+                .ifPresentOrElse(
+                        body -> body.isEqualTo(expectedBody),
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
     }
 
-    public <T> void verifyLatestBodyContainsInAnyOrder(List<T> expectedBody, TypeReference<List<T>> type) {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
-
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            String body = response.getBody();
-
-            List<T> convertedBody = tryToConvertFromJson(body, type);
-
-            assertThat(convertedBody, containsInAnyOrder(expectedBody.toArray()));
-        } else {
-            fail("Got no response");
-        }
+    public <T> void verifyLatestBodyContainsInAnyOrder(List<T> expectedBody, ParameterizedTypeReference<T> type) {
+        getLastResponse()
+                .map(response -> response.expectBodyList(type))
+                .ifPresentOrElse(
+                        body -> body.contains((T[]) expectedBody.toArray()),
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
     }
 
     public void verifyLatestBodyIsEmpty() {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
-
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            String body = response.getBody();
-
-            assertThat(body, is(equalTo("")));
-        } else {
-            fail("Got no response");
-        }
+        getLastResponse()
+                .map(WebTestClient.ResponseSpec::expectBody)
+                .ifPresentOrElse(
+                        WebTestClient.BodyContentSpec::isEmpty,
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
     }
 
     public void verifyLatestBodyIsEmptyArray() {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
-
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            String body = response.getBody();
-
-            List<String> convertedBody = tryToConvertFromJson(body, STRING_LIST_TYPE);
-
-            assertThat(convertedBody, is(empty()));
-        } else {
-            fail("Got no response");
-        }
+        getLastResponse()
+                .map(response -> response.expectBodyList(Object.class))
+                .ifPresentOrElse(
+                        body -> {
+                            body.hasSize(0);
+                        },
+                        () -> {
+                            throw new AssertionFailedError("Got no response");
+                        }
+                );
     }
 
     public String getLatestResponseHeaderParam(String key) {
-        Optional<ResponseEntity<String>> maybeResponse = getLastResponse();
-
-        if (maybeResponse.isPresent()) {
-            ResponseEntity<String> response = maybeResponse.get();
-            return response.getHeaders().getFirst(key);
-        } else {
-            throw new AssertionFailedError("Got no response");
-        }
+        return getLastResponse()
+                .map(response -> response.returnResult(String.class))
+                .map(ExchangeResult::getResponseHeaders)
+                .map(headers -> headers.getFirst(key))
+                .orElseThrow(() -> {
+                    throw new AssertionFailedError("Got no response");
+                });
     }
 
     /* *****************************************************************************************************************
      * Private methods
      **************************************************************************************************************** */
 
-    private Optional<ResponseEntity<String>> getLastResponse() {
+    private Optional<WebTestClient.ResponseSpec> getLastResponse() {
         return Optional.ofNullable(lastResponse);
     }
 
-    private void requestEmptyBody(HttpMethod method, String url, Object... urlVariables) {
-        lastResponse = restTemplate.exchange(
-                url,
-                method,
-                new HttpEntity<>(headers),
-                String.class,
-                urlVariables
-        );
-
-        headers.clear();
-    }
-
-    private void request(HttpMethod method, String url, Object body, Object... urlVariables) {
-        lastResponse = restTemplate.exchange(
-                url,
-                method,
-                new HttpEntity<>(body, headers),
-                String.class,
-                urlVariables
-        );
-
-        headers.clear();
-    }
-
-    private <T> T tryToConvertFromJson(String body, Class<T> type) {
-        T convertedBody;
-
-        try {
-            convertedBody = mapper.readValue(body, type);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
-
-        return convertedBody;
-    }
-
-    private <T> List<T> tryToConvertFromJson(String body, TypeReference<List<T>> type) {
-        List<T> convertedBody;
-
-        try {
-            convertedBody = mapper.readValue(body, type);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
-
-        return convertedBody;
+    private Consumer<HttpHeaders> setupHeaders() {
+        return requestHeaders -> {
+            requestHeaders.addAll(headers);
+            headers.clear();
+        };
     }
 }

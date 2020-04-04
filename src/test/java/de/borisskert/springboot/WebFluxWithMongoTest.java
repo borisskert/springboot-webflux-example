@@ -1,4 +1,4 @@
-package de.borisskert.springboot.webflux;
+package de.borisskert.springboot;
 
 import org.springframework.boot.test.autoconfigure.data.mongo.AutoConfigureDataMongo;
 import org.springframework.boot.test.autoconfigure.data.mongo.DataMongoTypeExcludeFilter;

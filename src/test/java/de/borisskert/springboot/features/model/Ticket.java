@@ -1,14 +1,13 @@
 package de.borisskert.springboot.features.model;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import de.borisskert.springboot.webflux.TicketEntity;
+import org.springframework.core.ParameterizedTypeReference;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 public class Ticket {
-    public static final TypeReference<List<Ticket>> LIST_TYPE = new TypeReference<>() {
+    public static final ParameterizedTypeReference<Ticket> TYPE_REFERENCE = new ParameterizedTypeReference<>() {
     };
 
     public final String id;
